@@ -1,0 +1,6 @@
+.ipynb_checkpoints
+/.idea/
+/__pycache__/
+/data/LA5study_temp_npy
+/data/siblings_temp_npy
+*._*
