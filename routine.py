@@ -38,7 +38,7 @@ def run_one_epoch(model, loader, criterion, train, device, optimizer=None):
 def train(
     model, optimizer, train_dataloader, val_dataloader, device,
     metric, verbose=0, model_save_path=None,
-    max_epoch=1, eps=1e-3, max_patience=10):
+        max_epoch=100, eps=3e-3, max_patience=10):
     
     criterion = nn.CrossEntropyLoss()
 
@@ -97,38 +97,29 @@ def train(
             plt.show()
         
         # 5. Early stopping, best metrics, save model
-        if val_dataloader is not None:
-            if epoch_val_metric[-1] > best_metric:
-                patience = 0
-                best_metric = epoch_val_metric[-1]
-                last_train_metric, last_val_metric = epoch_train_metric[-1], epoch_val_metric[-1]
-                last_train_loss, last_val_loss = epoch_train_loss[-1], epoch_val_loss[-1]
-                if model_save_path is not None:
+        if val_dataloader is not None and epoch_val_metric[-1] > best_metric:
+            patience = 0
+            best_metric = epoch_val_metric[-1]
+            last_train_metric, last_val_metric = epoch_train_metric[-1], epoch_val_metric[-1]
+            last_train_loss, last_val_loss = epoch_train_loss[-1], epoch_val_loss[-1]
+            if model_save_path is not None:
                     torch.save(model.state_dict(), model_save_path)
-            else:
-                patience += 1
-                if patience >= max_patience:
-                    print("Early stopping! Patience is out.")
-                    break
-            if epoch_val_loss[-1] < eps:
-                print("Early stopping! Val loss < eps.")
-                break
+        elif val_dataloader is None and epoch_train_metric[-1] > best_metric:
+            patience = 0
+            best_metric = epoch_train_metric[-1]
+            last_train_metric = epoch_train_metric[-1]
+            last_train_loss = epoch_train_loss[-1]
+            if model_save_path is not None:
+                torch.save(model.state_dict(), model_save_path)
         else:
-            if epoch_train_metric[-1] > best_metric:
-                patience = 0
-                best_metric = epoch_train_metric[-1]
-                last_train_metric = epoch_train_metric[-1]
-                last_train_loss = epoch_train_loss[-1]
-                if model_save_path is not None:
-                    torch.save(model.state_dict(), model_save_path)
-            else:
-                patience += 1
-                if patience >= max_patience:
-                    print("Early stopping! Patience is out.")
-                    break
-            if epoch_train_loss[-1] < eps:
-                print("Early stopping! Train loss < eps.")
-                break
+            patience += 1
+
+        if patience >= max_patience:
+            print("Early stopping! Patience is out.")
+            break
+        if epoch_train_loss[-1] < eps:
+            print("Early stopping! Train loss < eps.")
+            break
 
     return last_train_loss, last_train_metric, last_val_loss, last_val_metric
 
@@ -172,12 +163,13 @@ def cross_val_score(
             del train_loader
         else:
             model.load_state_dict(torch.load(model_load_path))
-            val_loader = DataLoader(Subset(val_dataset, val_idx),
+            val_loader = DataLoader(Subset(dataset, val_idx),
                                     shuffle=False,
                                     batch_size=batch_size,
                                     drop_last=False)
+            criterion = nn.CrossEntropyLoss()
             with torch.no_grad():
-                val_losses, val_probs, val_targets = run_one_epoch(model, val_dataloader, criterion, False, device)
+                val_losses, val_probs, val_targets = run_one_epoch(model, val_loader, criterion, False, device)
             val_metric = metric(val_targets, val_probs)
             val_metrics.append(val_metric)
             

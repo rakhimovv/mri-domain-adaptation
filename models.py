@@ -1,14 +1,18 @@
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 
 class Flatten(nn.Module):
     def forward(self, input):
         return input.view(input.size(0), -1)
 
+
 def conv3x3x3(in_planes, out_planes, stride=1):
     # 3x3x3 convolution with padding
     return nn.Conv3d(in_planes, out_planes, kernel_size=3, stride=stride, padding=1, bias=False)
+
 
 class BasicBlock(nn.Module):
     def __init__(self, inplanes, planes, stride=1):
@@ -37,7 +41,8 @@ class BasicBlock(nn.Module):
 
 
 class VoxResNet(nn.Module):
-    def __init__(self, num_classes=2, n_filters=32, stride=2, n_blocks=3, input_shape=(152, 188, 152), dropout=0, n_fc_units=128):
+    def __init__(self, input_shape=(128, 128, 128), num_classes=2, n_filters=32, stride=2, n_blocks=3,
+                 n_flatten_units=None, dropout=0, n_fc_units=128):
         super(self.__class__, self).__init__()
         self.model = nn.Sequential()
 
@@ -80,18 +85,17 @@ class VoxResNet(nn.Module):
             self.model.add_module("activation_6", nn.ReLU(inplace=True))
 
 #         self.model.add_module("max_pool3d_1", nn.MaxPool3d(kernel_size=3)) # (b/2)n * (x/(2^b)sk) * (y/(2^b)sk) * (z/(2^b)sk) ?
+
+        if n_flatten_units is None:
+            n_flatten_units = 4 * n_filters * np.prod(np.array(input_shape) // (2 ** n_blocks * stride))
+        #         print(n_flatten_units)
         
         self.model.add_module("flatten_1", Flatten())
-#         self.model.add_module("fully_conn_1", nn.Linear(2 ** ((n_blocks + 1) // 2) * n_filters * np.prod(np.array(input_shape) // (stride * 2 ** n_blocks)), n_fc_units))
-        if n_blocks == 3:
-            self.model.add_module("fully_conn_1", nn.Linear(128 * 10 * 12 * 10, n_fc_units))
-        if n_blocks == 4:
-#             self.model.add_module("fully_conn_1", nn.Linear(128 * 5 * 6 * 5, n_fc_units))
-            self.model.add_module("fully_conn_1", nn.Linear(23040, n_fc_units))
+        self.model.add_module("fully_conn_1", nn.Linear(n_flatten_units, n_fc_units))
         self.model.add_module("activation_6", nn.ReLU(inplace=True))
         self.model.add_module("dropout_1", nn.Dropout(dropout))
 
         self.model.add_module("fully_conn_2", nn.Linear(n_fc_units, num_classes))
-        
+
     def forward(self, x):
         return self.model(x)

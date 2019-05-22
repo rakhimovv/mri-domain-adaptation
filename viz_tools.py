@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 
+
 def plot_central_cuts(img, title=""):
     """
     param image: tensor or np array of shape (CxDxHxW)
