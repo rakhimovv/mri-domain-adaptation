@@ -132,30 +132,41 @@ def stratified_batch_indices(indices, labels):
 
 
 def cross_val_score(
-    create_model_opt, dataset, cv, device, metric, model_load_path=None,
-    batch_size=10):
+        create_model_opt, train_dataset, cv, device, metric, model_load_path=None,
+        batch_size=10, val_dataset=None):
     
     # if model_load_path is not None there is no training
-    
-    cv_splits = list(cv.split(X=np.arange(len(dataset)), y=dataset.labels))
+
+    fmri_case = True
+    if val_dataset is None:  # smri case
+        val_dataset = train_dataset
+        fmri_case = False
+
+    cv_splits = list(cv.split(X=np.arange(len(train_dataset)), y=train_dataset.labels))
 
     val_metrics = []
 
     for i in range(len(cv_splits)):
         train_idx, val_idx = cv_splits[i]
+        if fmri_case:
+            val_pids = np.delete(train_dataset.pids, train_idx)
+            val_mask = np.isin(val_dataset.pids, val_pids)
+            val_idx = np.arange(len(val_dataset))[val_mask]
+            del val_pids, val_mask
+        
         model, optimizer = create_model_opt()
 
         if model_load_path is None:
-            train_idx = stratified_batch_indices(train_idx, dataset.labels)
-            train_loader = DataLoader(Subset(dataset, train_idx),
+            train_idx = stratified_batch_indices(train_idx, train_dataset.labels)
+            train_loader = DataLoader(Subset(train_dataset, train_idx),
                                       shuffle=False,
                                       batch_size=batch_size,
 #                                       num_workers=num_workers,
                                       drop_last=False)
-            val_loader = DataLoader(Subset(dataset, val_idx),
+            val_loader = DataLoader(Subset(val_dataset, val_idx),
                                     shuffle=False,
                                     batch_size=batch_size,
-#                                     num_workers=num_workers,
+                                    #                                     num_workers=num_workers,
                                     drop_last=False)
             _, _, _, last_val_metric = train(model, optimizer, train_loader, val_loader, device,
                                              metric=metric, verbose=1)
@@ -163,7 +174,7 @@ def cross_val_score(
             del train_loader
         else:
             model.load_state_dict(torch.load(model_load_path))
-            val_loader = DataLoader(Subset(dataset, val_idx),
+            val_loader = DataLoader(Subset(val_dataset, val_idx),
                                     shuffle=False,
                                     batch_size=batch_size,
                                     drop_last=False)

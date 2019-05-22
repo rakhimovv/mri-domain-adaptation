@@ -86,7 +86,7 @@ class LA5_Siblings_MRI(data.Dataset):
             if self.labels.shape[1] == 1:
                 self.labels = self.labels.squeeze()
             self.mri_paths = target_df["path"].tolist()
-            self.pids = target_df["participant_id"].tolist()
+            self.pids = target_df["participant_id"].values
             assert len(set(self.pids)) == len(self.pids)
             if brain_mask_suffix is not None:
                 self.brain_mask_paths = target_df["mask_path"].tolist()
