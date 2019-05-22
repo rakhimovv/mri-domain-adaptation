@@ -168,8 +168,13 @@ def cross_val_score(
                                     batch_size=batch_size,
                                     #                                     num_workers=num_workers,
                                     drop_last=False)
+
+            if fmri_case:
+                eps = 1e-2
+            else:
+                eps = 3e-3
             _, _, _, last_val_metric = train(model, optimizer, train_loader, val_loader, device,
-                                             metric=metric, verbose=1)
+                                             metric=metric, verbose=1, eps=eps)
             val_metrics.append(last_val_metric)
             del train_loader
         else:
