@@ -104,7 +104,7 @@ def train(
             last_train_loss, last_val_loss = epoch_train_loss[-1], epoch_val_loss[-1]
             if model_save_path is not None:
                     torch.save(model.state_dict(), model_save_path)
-        elif val_dataloader is None and epoch_train_metric[-1] > best_metric:
+        elif val_dataloader is None and epoch_train_metric[-1] >= best_metric:
             patience = 0
             best_metric = epoch_train_metric[-1]
             last_train_metric = epoch_train_metric[-1]
