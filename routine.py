@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from IPython.display import clear_output
+from scipy import stats
 from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
 
@@ -125,10 +126,24 @@ def train(
 
 
 def stratified_batch_indices(indices, labels):
-    idx = sorted(indices, key=lambda x: labels[x])
-    for i in range(0, len(indices) // 2, 2):
-        idx[i], idx[len(indices) - 1 - i] = idx[len(indices) - 1 - i], idx[i]
-    return idx
+    dominating_label = stats.mode(labels)[0][0]
+    idx0 = indices[labels == dominating_label]
+    idx1 = indices[labels != dominating_label]
+    step = np.ceil(len(idx0) / len(idx1)) + 1
+    assert step >= 1.
+    result = []
+    j0 = 0
+    j1 = 0
+    for i in range(len(indices)):
+        if (i % step == 0 or j0 == len(idx0)) and j1 < len(idx1):
+            result.append(idx1[j1])
+            j1 += 1
+        else:
+            result.append(idx0[j0])
+            j0 += 1
+    result = np.array(result)
+    assert len(result) == len(indices)
+    return result
 
 
 def cross_val_score(
@@ -137,10 +152,10 @@ def cross_val_score(
     
     # if model_load_path is not None there is no training
 
-    fmri_case = True
-    if val_dataset is None:  # smri case
+    use_rest = True
+    if val_dataset is None:  # smri case or fmri case without rest
         val_dataset = train_dataset
-        fmri_case = False
+        use_rest = False
 
     cv_splits = list(cv.split(X=np.arange(len(train_dataset)), y=train_dataset.labels))
 
@@ -148,16 +163,15 @@ def cross_val_score(
 
     for i in range(len(cv_splits)):
         train_idx, val_idx = cv_splits[i]
-        if fmri_case:
-            val_pids = np.delete(train_dataset.pids, train_idx)
-            val_mask = np.isin(val_dataset.pids, val_pids)
+        if use_rest:
+            val_mask = (np.isin(val_dataset.pids, train_dataset.pids[train_idx]) == False)
             val_idx = np.arange(len(val_dataset))[val_mask]
-            del val_pids, val_mask
+            del val_mask
         
         model, optimizer = create_model_opt()
 
         if model_load_path is None:
-            train_idx = stratified_batch_indices(train_idx, train_dataset.labels)
+            train_idx = stratified_batch_indices(train_idx, train_dataset.labels[train_idx])
             train_loader = DataLoader(Subset(train_dataset, train_idx),
                                       shuffle=False,
                                       batch_size=batch_size,
@@ -169,7 +183,7 @@ def cross_val_score(
                                     #                                     num_workers=num_workers,
                                     drop_last=False)
 
-            if fmri_case:
+            if use_rest:
                 eps = 1e-2
             else:
                 eps = 3e-3
