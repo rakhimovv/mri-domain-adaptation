@@ -164,7 +164,7 @@ def cross_val_score(
         train_idx, val_idx = cv_splits[i]
 
         # train data
-        if model_load_path is None or transfer:
+        if model_load_path is None or transfer or finetune:
             train_idx = stratified_batch_indices(train_idx, train_dataset.labels[train_idx])
             train_loader = DataLoader(Subset(train_dataset, train_idx),
                                       shuffle=False,
