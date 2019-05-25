@@ -148,9 +148,9 @@ def stratified_batch_indices(indices, labels):
 
 def cross_val_score(
         create_model_opt, train_dataset, cv, device, metric, model_load_path=None,
-        batch_size=10, val_dataset=None):
-    
-    # if model_load_path is not None there is no training
+        batch_size=10, val_dataset=None, transfer=False, finetune=False):
+    assert not (transfer and finetune)
+    assert (transfer == False) or (transfer == True and model_load_path is not None)
 
     use_rest = True
     if val_dataset is None:  # smri case or fmri case without rest
@@ -158,45 +158,43 @@ def cross_val_score(
         use_rest = False
 
     cv_splits = list(cv.split(X=np.arange(len(train_dataset)), y=train_dataset.labels))
-
     val_metrics = []
 
     for i in range(len(cv_splits)):
         train_idx, val_idx = cv_splits[i]
-        if use_rest:
-            val_mask = (np.isin(val_dataset.pids, train_dataset.pids[train_idx]) == False)
-            val_idx = np.arange(len(val_dataset))[val_mask]
-            del val_mask
-        
-        model, optimizer = create_model_opt()
 
-        if model_load_path is None:
+        # train data
+        if model_load_path is None or transfer:
             train_idx = stratified_batch_indices(train_idx, train_dataset.labels[train_idx])
             train_loader = DataLoader(Subset(train_dataset, train_idx),
                                       shuffle=False,
                                       batch_size=batch_size,
-#                                       num_workers=num_workers,
                                       drop_last=False)
-            val_loader = DataLoader(Subset(val_dataset, val_idx),
-                                    shuffle=False,
-                                    batch_size=batch_size,
-                                    #                                     num_workers=num_workers,
-                                    drop_last=False)
 
-            if use_rest:
-                eps = 1e-2
-            else:
-                eps = 3e-3
+        # val data
+        if use_rest:
+            val_mask = (np.isin(val_dataset.pids, train_dataset.pids[train_idx]) == False)
+            val_idx = np.arange(len(val_dataset))[val_mask]
+            del val_mask
+        val_loader = DataLoader(Subset(val_dataset, val_idx),
+                                shuffle=False,
+                                batch_size=batch_size,
+                                drop_last=False)
+
+        if model_load_path is None or transfer or finetune:  # train + validation
+            if model_load_path is None:  # train from scratch
+                model, optimizer = create_model_opt()
+            elif transfer:  # train only last layers
+                model, optimizer = create_model_opt(model_load_path, transfer=True)
+            elif finetune:  # train not from scratch
+                model, optimizer = create_model_opt(model_load_path)
+            eps = 1e-2 if use_rest else 3e-3
             _, _, _, last_val_metric = train(model, optimizer, train_loader, val_loader, device,
                                              metric=metric, verbose=1, eps=eps)
             val_metrics.append(last_val_metric)
             del train_loader
-        else:
-            model.load_state_dict(torch.load(model_load_path))
-            val_loader = DataLoader(Subset(val_dataset, val_idx),
-                                    shuffle=False,
-                                    batch_size=batch_size,
-                                    drop_last=False)
+        else:  # no train, just validation
+            model, optimizer = create_model_opt(model_load_path, transfer=False)
             criterion = nn.CrossEntropyLoss()
             with torch.no_grad():
                 val_losses, val_probs, val_targets = run_one_epoch(model, val_loader, criterion, False, device)
