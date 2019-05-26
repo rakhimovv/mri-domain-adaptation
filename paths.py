@@ -21,3 +21,7 @@ sibl_smri_brain_mask_suffix = 'T1w_space-MNI152NLin2009cAsym_brainmask.nii'
 #  siblings fmri (train on rest, test on task, participant ids must not intersect in train and test)
 sibl_fmri_file_suffix = 'task-letter2backtask_bold_space-MNI152NLin2009cAsym_preproc.nii'
 sibl_fmri_brain_mask_suffix = 'task-letter2backtask_bold_space-MNI152NLin2009cAsym_brainmask.nii'
+
+# siblings converted to LA5 style using CycleGAN on slices
+sibl2la5_data = ['../data/final_siblings/train/', '../data/final_siblings/val/']
+sibl2la5_smri_file_suffix = 'scan.npy'
