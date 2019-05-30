@@ -1,5 +1,5 @@
 # LA5_study_general
-la5_data = ['../../fmriprep_LA5study_aroma_retest/fmriprep/']
+la5_data = ['../../datasets/LA5study/fmriprep_LA5study_aroma/fmriprep/']
 la5_temp_npy_folder_path = './data/LA5study_temp_npy/' # for numpy files
 la5_target_path = './data/LA5study_targets.csv'
 #  LA5_study_smri

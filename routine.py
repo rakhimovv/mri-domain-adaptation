@@ -38,16 +38,14 @@ def run_one_epoch(model, loader, criterion, train, device, optimizer=None):
 
 def train(
     model, optimizer, train_dataloader, val_dataloader, device,
-    metric, verbose=0, model_save_path=None,
-        max_epoch=100, eps=3e-3, max_patience=10):
+    metric, verbose=0, model_save_path=None, max_epoch=100, eps=1e-3):
     
     criterion = nn.CrossEntropyLoss()
 
-    patience = 0
     best_metric = 0
 
-    epoch_train_loss, last_train_loss, epoch_train_metric, last_train_metric, = [], None, [], None
-    epoch_val_loss, last_val_loss, epoch_val_metric, last_val_metric, = [], None, [], None
+    epoch_train_loss, epoch_train_metric = [], []
+    epoch_val_loss, epoch_val_metric= [], []
 
     for epoch in range(max_epoch):
         start_time = time.time()
@@ -98,31 +96,16 @@ def train(
             plt.show()
         
         # 5. Early stopping, best metrics, save model
-        if val_dataloader is not None and epoch_val_metric[-1] > best_metric:
-            patience = 0
-            best_metric = epoch_val_metric[-1]
-            last_train_metric, last_val_metric = epoch_train_metric[-1], epoch_val_metric[-1]
-            last_train_loss, last_val_loss = epoch_train_loss[-1], epoch_val_loss[-1]
-            if model_save_path is not None:
-                    torch.save(model.state_dict(), model_save_path)
-        elif val_dataloader is None and epoch_train_metric[-1] >= best_metric:
-            patience = 0
-            best_metric = epoch_train_metric[-1]
-            last_train_metric = epoch_train_metric[-1]
-            last_train_loss = epoch_train_loss[-1]
-            if model_save_path is not None:
-                torch.save(model.state_dict(), model_save_path)
-        else:
-            patience += 1
-
-        if patience >= max_patience:
-            print("Early stopping! Patience is out.")
-            break
         if epoch_train_loss[-1] < eps:
             print("Early stopping! Train loss < eps.")
+            if model_save_path is not None:
+                torch.save(model.state_dict(), model_save_path)
             break
 
-    return last_train_loss, last_train_metric, last_val_loss, last_val_metric
+    if val_dataloader is not None:    
+        return epoch_train_loss[-1], epoch_train_metric[-1], epoch_val_loss[-1], epoch_val_metric[-1]
+    else:
+        return epoch_train_loss[-1], epoch_train_metric[-1], None, None
 
 
 def stratified_batch_indices(indices, labels):
@@ -148,7 +131,7 @@ def stratified_batch_indices(indices, labels):
 
 def cross_val_score(
         create_model_opt, train_dataset, cv, device, metric, model_load_path=None,
-        batch_size=10, val_dataset=None, transfer=False, finetune=False):
+        batch_size=10, val_dataset=None, transfer=False, finetune=False, eps=1e-3, max_epoch=100):
     assert not (transfer and finetune)
     assert (transfer == False) or (transfer == True and model_load_path is not None)
 
@@ -188,9 +171,8 @@ def cross_val_score(
                 model, optimizer = create_model_opt(model_load_path, transfer=True)
             elif finetune:  # train not from scratch
                 model, optimizer = create_model_opt(model_load_path)
-            eps = 1e-2 if use_rest else 3e-3
             _, _, _, last_val_metric = train(model, optimizer, train_loader, val_loader, device,
-                                             metric=metric, verbose=1, eps=eps)
+                                             metric=metric, verbose=1, eps=eps, max_epoch=max_epoch)
             val_metrics.append(last_val_metric)
             del train_loader
         else:  # no train, just validation

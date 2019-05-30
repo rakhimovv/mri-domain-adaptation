@@ -1,11 +1,63 @@
 import os
-
 import nibabel as nib
 import numpy as np
 import pandas as pd
+import random
 import torch
 import torch.utils.data as data
 from tqdm import tqdm
+
+def get_absmax(dataset, device):
+    absmax = 0.
+    for (img, target) in tqdm(dataset):
+        img = torch.FloatTensor(img).to(device)
+        absmax = max(absmax, img.abs().max().item())
+        del img, target
+    return absmax
+
+def AbsMaxScale(img, absmax):
+    return img / absmax
+
+def ToTensor(img, device='cpu'):
+    return torch.from_numpy(img).float().to(device)
+
+class UnalignedSlicesDataset(data.Dataset):
+
+    def __init__(self, dataset_A, dataset_B, img_shape, gan_img_shape=(200, 200)):
+        if len(dataset_A) > len(dataset_B):
+            self.dataset_A = dataset_A
+            self.dataset_B = dataset_B
+        else:
+            self.dataset_A = dataset_B
+            self.dataset_B = dataset_A
+        self.sizeA = len(self.dataset_A)
+        self.slice_count = self.dataset_A.img_shape[-1]
+        self.size = self.sizeA * self.slice_count
+        pad_size = (max(0,gan_img_shape[1]-img_shape[1]), 0, max(0, gan_img_shape[0]-img_shape[0]), 0)
+        self.padder = torch.nn.ConstantPad2d(pad_size, 0)
+        self.storage = {}
+
+    def __getitem__(self, index):
+        index_A = index // self.slice_count
+        index_slice_A = index % self.slice_count
+        index_slice_B = random.randint(0, self.slice_count - 1)
+        
+        if index_A not in self.storage:
+            index_B = random.randint(0, len(self.dataset_B) - 1)
+            A, A_target = self.dataset_A[index_A]
+            B, B_target = self.dataset_B[index_B]
+            del self.storage
+            self.storage = {}
+            self.storage[index_A] = {'A': A, 'B': B}
+        
+        A_slice = ToTensor(self.storage[index_A]['A'][:, :, :, index_slice_A])
+        B_slice = ToTensor(self.storage[index_A]['B'][:, :, :, index_slice_B])
+        A_slice, B_slice = self.padder(A_slice), self.padder(B_slice)
+        
+        return {'A': A_slice, 'B': B_slice}
+
+    def __len__(self):
+        return self.size
 
 
 def load_nii_to_array(nii_path):
@@ -145,8 +197,7 @@ class LA5_Siblings_MRI(data.Dataset):
 
         if self.mri_type == "fMRI":
             assert self.seq_len != None and self.seq_len > 0
-            start_pos = np.random.choice(
-                img.shape[-1] - self.seq_len) if self.fixed_start_pos is None else self.fixed_start_pos
+            start_pos = np.random.choice(img.shape[-1] - self.seq_len) if self.fixed_start_pos is None else self.fixed_start_pos
             img = img[:, :, :, :, start_pos:start_pos + self.seq_len]
             assert img.shape[-1] == self.seq_len
 
