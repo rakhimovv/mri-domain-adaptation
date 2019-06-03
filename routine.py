@@ -131,7 +131,8 @@ def stratified_batch_indices(indices, labels):
 
 def cross_val_score(
         create_model_opt, train_dataset, cv, device, metric, model_load_path=None,
-        batch_size=10, val_dataset=None, transfer=False, finetune=False, eps=1e-3, max_epoch=100):
+        batch_size=10, val_dataset=None, transfer=False, finetune=False, eps=1e-3,
+        max_epoch=100, train_is_augmented=False, train_pids=[], train_labels=[]):
     assert not (transfer and finetune)
     assert (transfer == False) or (transfer == True and model_load_path is not None)
 
@@ -140,29 +141,53 @@ def cross_val_score(
         val_dataset = train_dataset
         use_rest = False
 
-    cv_splits = list(cv.split(X=np.arange(len(train_dataset)), y=train_dataset.labels))
+    if not train_is_augmented:
+        cv_splits = list(cv.split(X=np.arange(len(train_dataset)), y=train_dataset.labels))
+    else:
+        assert val_dataset is not None
+        cv_splits = list(cv.split(X=np.arange(len(val_dataset)), y=val_dataset.labels))
+    
     val_metrics = []
 
     for i in range(len(cv_splits)):
         train_idx, val_idx = cv_splits[i]
 
-        # train data
-        if model_load_path is None or transfer or finetune:
-            train_idx = stratified_batch_indices(train_idx, train_dataset.labels[train_idx])
-            train_loader = DataLoader(Subset(train_dataset, train_idx),
-                                      shuffle=False,
-                                      batch_size=batch_size,
-                                      drop_last=False)
+        if not train_is_augmented:
+            # train data
+            if model_load_path is None or transfer or finetune:
+                train_idx = stratified_batch_indices(train_idx, train_dataset.labels[train_idx])
+                train_loader = DataLoader(Subset(train_dataset, train_idx),
+                                          shuffle=False,
+                                          batch_size=batch_size,
+                                          drop_last=False)
 
-        # val data
-        if use_rest:
-            val_mask = (np.isin(val_dataset.pids, train_dataset.pids[train_idx]) == False)
-            val_idx = np.arange(len(val_dataset))[val_mask]
-            del val_mask
-        val_loader = DataLoader(Subset(val_dataset, val_idx),
-                                shuffle=False,
-                                batch_size=batch_size,
-                                drop_last=False)
+            # val data
+
+            if use_rest:
+                val_mask = (np.isin(val_dataset.pids, train_dataset.pids[train_idx]) == False)
+                val_idx = np.arange(len(val_dataset))[val_mask]
+                del val_mask
+            val_loader = DataLoader(Subset(val_dataset, val_idx),
+                                    shuffle=False,
+                                    batch_size=batch_size,
+                                    drop_last=False)
+        else:
+            val_loader = DataLoader(Subset(val_dataset, val_idx),
+                                    shuffle=False,
+                                    batch_size=batch_size,
+                                    drop_last=False)
+            if model_load_path is None or transfer or finetune:
+                if use_rest:
+                    train_mask = (np.isin(train_pids, val_dataset.pids[val_idx]) == False)
+                    train_idx = np.arange(len(train_dataset))[train_mask]
+                    del train_mask
+                train_idx = stratified_batch_indices(train_idx, train_labels[train_idx])
+                train_loader = DataLoader(Subset(train_dataset, train_idx),
+                                          shuffle=False,
+                                          batch_size=batch_size,
+                                          drop_last=False)
+            
+            
 
         if model_load_path is None or transfer or finetune:  # train + validation
             if model_load_path is None:  # train from scratch
